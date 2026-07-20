@@ -1,9 +1,10 @@
 # AI-detection-algorithm
 
 A practical, **well-commented** toolkit for detecting AI-generated **images,
-text, and video**. It implements the main *classes* of detection approach — from
-model-free forensic heuristics to learned classifiers — and shows how to combine
-several weak signals into one decision.
+text, video, and audio**. It implements the main *classes* of detection
+approach — from model-free forensic heuristics to learned classifiers — shows
+how to combine several weak signals into one decision, and ships an evaluation
+harness so you can calibrate the thresholds on your own data.
 
 > **Detection is an arms race.** Generators improve constantly, so no single
 > detector is reliable on its own. Every module here documents *what* it
@@ -19,6 +20,8 @@ several weak signals into one decision.
 | `frequency_analysis` | GAN/diffusion upsamplers leave periodic peaks in the Fourier spectrum; real photos have a smooth 1/f spectrum. | numpy |
 | `error_level_analysis` | Re-compressing a JPEG reveals regions with a different compression history (edits/splices/composites). | Pillow |
 | `metadata_analysis` | Missing camera EXIF or a generative-tool `Software` tag. Cheap tie-breaker. | Pillow |
+| `noise_residual` | Real sensors imprint white PRNU noise; generators are over-smooth or leave structured residuals. | scipy |
+| `color_statistics` | Demosaicing ties camera color channels together; generators reproduce the co-occurrence stats imperfectly. | scipy |
 | `cnn_detector` | Learned classifier — strongest single signal; bring your own weights. | torch *(optional)* |
 
 ### Text (`src/text_detection/`)
@@ -34,6 +37,14 @@ several weak signals into one decision.
 | `temporal_consistency` | Deepfakes flicker: incoherent high-frequency change between frames. | opencv *(optional)* |
 | `face_warping` | Face-swap blend seams + unnatural blink rate. | opencv *(optional)* |
 | `frame_frequency` | Apply the image spectral detector across sampled frames. | opencv *(optional)* |
+
+### Audio (`src/audio_detection/`)
+| Module | Idea | Deps |
+|---|---|---|
+| `spectral_artifacts` | Neural vocoders leave a flat HF roll-off + periodic hop energy (the audio analogue of image upsampling). | numpy |
+| `silence_stats` | Real recordings have a non-zero noise floor and irregular pauses; TTS gaps are often digitally clean and uniform. | numpy |
+
+Audio uses only stdlib `wave` + numpy (PCM WAV in; convert other formats with ffmpeg first).
 
 Heavy dependencies (torch, transformers, opencv) are **optional**: each detector
 degrades gracefully and returns `None` if its dependency is missing, so the
@@ -51,15 +62,36 @@ pip install -r requirements.txt   # torch/transformers/opencv lines are optional
 python examples/demo.py --image path/to/pic.jpg
 python examples/demo.py --text  "the passage you want to test..."
 python examples/demo.py --video path/to/clip.mp4
+python examples/demo.py --audio path/to/voice.wav
+python examples/demo.py --auto  path/to/anything   # infers the media type
 ```
 
-Or from Python:
+Or from Python — the **unified dispatcher** auto-routes by media type and runs
+every applicable detector:
 
 ```python
-from src.image_detection import spectral_score, ela_score, combine_scores
+from src.detector import detect
 
-scores = {"frequency": spectral_score("pic.jpg"), "ela": ela_score("pic.jpg")}
-print(combine_scores(scores))   # -> P(AI-generated) in [0, 1]
+result = detect("pic.jpg")                       # media type inferred
+result = detect("some passage...", media_type="text")
+print(result["combined"], result["verdict"])     # e.g. 0.31 LIKELY AUTHENTIC
+print(result["scores"])                          # per-detector breakdown
+```
+
+### Calibrating thresholds on your data
+
+The built-in 0.5 / 0.75 thresholds are hand-set. Replace them with values fit to
+a labeled set using `src/evaluation`:
+
+```python
+import numpy as np
+from src.detector import detect
+from src.evaluation import roc_auc, best_threshold
+
+labels = np.array([...])   # 1 = AI-generated, 0 = authentic
+scores = np.array([detect(p)["combined"] for p in paths])
+print("AUROC:", roc_auc(labels, scores))         # threshold-free separability
+print("best cut:", best_threshold(labels, scores))
 ```
 
 ## Tests
@@ -83,10 +115,13 @@ pytest tests/          # runs with only numpy/scipy/Pillow installed
 
 ```
 src/
-  image_detection/   frequency, ELA, metadata, CNN
+  detector.py        unified detect() dispatcher (auto-routes by media type)
+  image_detection/   frequency, ELA, metadata, noise-residual, color-stats, CNN
   text_detection/    perplexity, stylometry, detectgpt
   video_detection/   temporal, face-warping, frame-frequency
+  audio_detection/   vocoder spectral artifacts, silence/noise-floor stats
+  evaluation/        AUROC, best-threshold, confusion/precision/recall
   utils/             shared preprocessing
-examples/demo.py     ensemble CLI
+examples/demo.py     ensemble CLI (--image/--text/--video/--audio/--auto)
 tests/               dependency-free property tests
 ```
