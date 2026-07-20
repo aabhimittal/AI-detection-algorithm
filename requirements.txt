@@ -1,0 +1,16 @@
+# Core numerical / imaging stack — required for all detectors.
+numpy>=1.24
+scipy>=1.10
+Pillow>=10.0          # image I/O + Error Level Analysis re-compression
+scikit-learn>=1.3     # lightweight classifiers used by several detectors
+
+# Text detection.
+# transformers/torch power the perplexity and DetectGPT-style detectors.
+# They are heavy; every detector degrades gracefully if they are absent
+# (see the try/except import guards in each module), so treat these as
+# OPTIONAL — install only if you want the model-based text/image detectors.
+torch>=2.0            # optional
+transformers>=4.35    # optional
+
+# Video detection.
+opencv-python>=4.8    # optional — frame extraction + face/temporal analysis
