@@ -12,9 +12,11 @@ Four complementary approaches, weakest-assumption to strongest-model:
 
 Ensemble them — see `combine_scores`.
 """
-from .frequency_analysis import spectral_score  # noqa: F401
-from .error_level_analysis import ela_score      # noqa: F401
-from .metadata_analysis import metadata_score    # noqa: F401
+from .frequency_analysis import spectral_score      # noqa: F401
+from .error_level_analysis import ela_score          # noqa: F401
+from .metadata_analysis import metadata_score        # noqa: F401
+from .noise_residual import noise_residual_score     # noqa: F401
+from .color_statistics import color_statistics_score  # noqa: F401
 
 
 def combine_scores(scores: dict[str, float], weights: dict[str, float] | None = None) -> float:

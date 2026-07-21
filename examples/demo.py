@@ -19,9 +19,11 @@ from pathlib import Path
 # Make `src` importable when running the file directly from the repo root.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.detector import detect
 from src.image_detection import spectral_score, ela_score, metadata_score, combine_scores
 from src.text_detection import stylometry_score, perplexity_score, combine_text_scores
 from src.video_detection import temporal_score, frame_frequency_score, combine_video_scores
+from src.audio_detection import audio_spectral_score, silence_score, combine_audio_scores
 
 
 def _verdict(p: float) -> str:
@@ -42,6 +44,18 @@ def run_image(path: str) -> None:
     }
     combined = combine_scores(scores)
     _report("IMAGE", scores, combined)
+
+
+def run_audio(path: str) -> None:
+    scores = {"spectral": audio_spectral_score(path), "silence": silence_score(path)}
+    combined = combine_audio_scores(scores)
+    _report("AUDIO", scores, combined)
+
+
+def run_auto(path: str) -> None:
+    """Let the unified dispatcher infer the media type and run every detector."""
+    result = detect(path)
+    _report(result["media_type"].upper() + " (auto)", result["scores"], result["combined"])
 
 
 def run_text(text: str) -> None:
@@ -78,6 +92,8 @@ def main() -> None:
     g.add_argument("--image", help="path to an image file")
     g.add_argument("--text", help="a text passage (quote it)")
     g.add_argument("--video", help="path to a video file")
+    g.add_argument("--audio", help="path to an audio file (WAV)")
+    g.add_argument("--auto", help="path; infer media type automatically")
     args = ap.parse_args()
 
     if args.image:
@@ -86,6 +102,10 @@ def main() -> None:
         run_text(args.text)
     elif args.video:
         run_video(args.video)
+    elif args.audio:
+        run_audio(args.audio)
+    elif args.auto:
+        run_auto(args.auto)
 
 
 if __name__ == "__main__":
