@@ -30,6 +30,7 @@ harness so you can calibrate the thresholds on your own data.
 | `perplexity` | LLM text is low-perplexity and low-"burstiness" under an LLM (the GPTZero intuition). | transformers *(optional)* |
 | `stylometry` | Model-free style stats: lexical diversity, sentence-length variance, connective density. | none |
 | `detectgpt` | Machine text sits at a local maximum of model log-prob; perturbations lower it (DetectGPT curvature). | transformers *(optional)* |
+| `watermark` | **Proactive** green-list z-test (Kirchenbauer-style): detects the secret bias a watermarking model embeds, with a bounded false-positive rate. | none |
 
 ### Video (`src/video_detection/`)
 | Module | Idea | Deps |
@@ -78,6 +79,32 @@ print(result["combined"], result["verdict"])     # e.g. 0.31 LIKELY AUTHENTIC
 print(result["scores"])                          # per-detector breakdown
 ```
 
+### Trained ensemble (better than the naive mean)
+
+`combine_scores` averages detectors equally. Once you have labeled data, learn a
+weighted fusion instead — a logistic regression that discovers which detectors
+to trust and outputs a calibrated probability:
+
+```python
+from src.ensemble import LogisticEnsemble
+
+ens = LogisticEnsemble(["frequency", "ela", "metadata", "noise_residual", "color_statistics"])
+ens.fit(list_of_score_dicts, labels)     # labels: 1=AI, 0=authentic
+ens.predict_one({"frequency": 0.7, "ela": 0.2})   # missing signals auto-imputed
+ens.weights()                             # inspect learned per-detector weights
+ens.save("model.json")                    # LogisticEnsemble.load(...) to restore
+```
+
+### Batch scoring a directory
+
+Score a whole folder and export JSON/CSV for triage; pass labels to get an
+end-to-end AUROC on your own data in one command:
+
+```bash
+python -m src.batch path/to/folder --csv results.csv --json results.json
+python -m src.batch path/to/folder --labels labels.json   # -> AUROC + best threshold
+```
+
 ### Calibrating thresholds on your data
 
 The built-in 0.5 / 0.75 thresholds are hand-set. Replace them with values fit to
@@ -116,8 +143,10 @@ pytest tests/          # runs with only numpy/scipy/Pillow installed
 ```
 src/
   detector.py        unified detect() dispatcher (auto-routes by media type)
+  ensemble.py        LogisticEnsemble — trained weighted fusion of detectors
+  batch.py           directory batch scorer + CLI (JSON/CSV, optional AUROC)
   image_detection/   frequency, ELA, metadata, noise-residual, color-stats, CNN
-  text_detection/    perplexity, stylometry, detectgpt
+  text_detection/    perplexity, stylometry, detectgpt, watermark
   video_detection/   temporal, face-warping, frame-frequency
   audio_detection/   vocoder spectral artifacts, silence/noise-floor stats
   evaluation/        AUROC, best-threshold, confusion/precision/recall

@@ -19,7 +19,9 @@ from .image_detection import (
     spectral_score, ela_score, metadata_score,
     noise_residual_score, color_statistics_score, combine_scores,
 )
-from .text_detection import stylometry_score, perplexity_score, combine_text_scores
+from .text_detection import (
+    stylometry_score, perplexity_score, watermark_score, combine_text_scores,
+)
 from .video_detection import temporal_score, frame_frequency_score, combine_video_scores
 from .audio_detection import audio_spectral_score, silence_score, combine_audio_scores
 
@@ -78,7 +80,11 @@ def detect(x: str, media_type: Optional[str] = None) -> dict:
         combined = combine_scores({k: v for k, v in scores.items() if v is not None})
 
     elif media_type == "text":
-        scores = {"stylometry": stylometry_score(x), "perplexity": perplexity_score(x)}
+        scores = {
+            "stylometry": stylometry_score(x),
+            "perplexity": perplexity_score(x),
+            "watermark": watermark_score(x),
+        }
         combined = combine_text_scores(scores)
 
     elif media_type == "video":
