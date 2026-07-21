@@ -18,6 +18,7 @@ As with images: fuse them. Each returns P(AI-generated) in [0, 1].
 """
 from .perplexity import perplexity_score       # noqa: F401
 from .stylometry import stylometry_score        # noqa: F401
+from .watermark import watermark_score          # noqa: F401
 
 
 def combine_text_scores(scores: dict[str, float]) -> float:
