@@ -21,22 +21,15 @@ needs no GPU and no model download. Returns P(AI-generated) in [0, 1].
 """
 from __future__ import annotations
 
-import re
 import statistics
+
+from ._tokenize import is_cjk_dominant, sentences as _sentences, words as _words
 
 # A small set of connectives that LLMs over-use relative to casual human prose.
 _LLM_FAVORED = {
     "however", "moreover", "furthermore", "additionally", "consequently",
     "therefore", "thus", "overall", "importantly", "notably", "essentially",
 }
-
-
-def _sentences(text: str) -> list[str]:
-    return [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
-
-
-def _words(text: str) -> list[str]:
-    return re.findall(r"[a-zA-Z']+", text.lower())
 
 
 def stylometry_score(text: str) -> float:
@@ -46,6 +39,11 @@ def stylometry_score(text: str) -> float:
     if len(words) < 20 or len(sents) < 2:
         # Too little text to be statistically meaningful -> neutral.
         return 0.5
+
+    # CJK is written without spaces, so a "word" here is a single character and
+    # the Latin-tuned type-token and connective thresholds do not transfer.
+    # Fall back to the two script-neutral signals in that case.
+    cjk = is_cjk_dominant(text)
 
     # 1. Lexical diversity (type-token ratio). LOW diversity -> more machine-y.
     ttr = len(set(words)) / len(words)
@@ -62,6 +60,11 @@ def stylometry_score(text: str) -> float:
     conn = sum(1 for w in words if w in _LLM_FAVORED) / len(words)
     #    ~0.5% is ordinary; >2% is notably heavy on connectives.
     conn_signal = max(0.0, min(1.0, conn / 0.02))
+
+    if cjk:
+        # Character-level TTR runs much lower; drop the Latin-calibrated
+        # diversity and connective terms rather than reporting a biased score.
+        return float(uniform_signal)
 
     # Equal-weight average of the three.
     return float((div_signal + uniform_signal + conn_signal) / 3.0)

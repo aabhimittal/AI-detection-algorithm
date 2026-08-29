@@ -32,8 +32,14 @@ from ..utils import load_image_gray
 
 
 def noise_residual_score(path: str) -> float:
-    """Return P(synthetic) in [0, 1] from sensor-noise residual statistics."""
+    """Return P(synthetic) in [0, 1] from sensor-noise residual statistics.
+
+    Images smaller than 4x4 have no residual to speak of and would make the
+    gradient and autocorrelation steps ill-defined, so they abstain at 0.5.
+    """
     img = load_image_gray(path)
+    if img.ndim != 2 or min(img.shape) < 4:
+        return 0.5
 
     # 1. Residual = image - low-pass(image). What's left is high-frequency
     #    detail + sensor noise. sigma=1.5 keeps fine noise, removes structure.

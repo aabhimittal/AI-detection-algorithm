@@ -9,6 +9,13 @@ Three complementary approaches:
     stylometry  -- classic authorship features (type-token ratio, function-word
                    rates, sentence-length variance). Fast, model-free, works
                    even when you can't run an LLM.
+    unicode     -- code-point forensics: invisible watermark characters,
+                   homoglyph substitutions from "humanizer" evasion tools, and
+                   the uniform typography of generated prose. Independent of
+                   wording, so it survives paraphrase attacks.
+    structure   -- discourse shape: phrase recycling, repeated sentence
+                   openers, the three-item-list habit, answer scaffolding and
+                   assistant register phrases.
     detectgpt   -- the strongest zero-shot idea: machine text sits at a local
                    maximum of the model's log-probability, so small paraphrases
                    almost always LOWER its probability. Human text does not have
@@ -19,6 +26,10 @@ As with images: fuse them. Each returns P(AI-generated) in [0, 1].
 from .perplexity import perplexity_score       # noqa: F401
 from .stylometry import stylometry_score        # noqa: F401
 from .watermark import watermark_score          # noqa: F401
+from .structure import structure_score, structure_report          # noqa: F401
+from .unicode_forensics import (                                  # noqa: F401
+    unicode_forensics_score, unicode_forensics_report,
+)
 
 
 def combine_text_scores(scores: dict[str, float]) -> float:

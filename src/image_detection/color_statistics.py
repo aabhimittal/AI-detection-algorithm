@@ -29,8 +29,14 @@ from scipy.ndimage import gaussian_filter
 
 
 def color_statistics_score(path: str) -> float:
-    """Return P(synthetic) in [0, 1] from color co-occurrence statistics."""
+    """Return P(synthetic) in [0, 1] from color co-occurrence statistics.
+
+    Thumbnails and 1-pixel-wide images carry no usable neighbour statistics, so
+    they return the neutral 0.5 rather than a NaN dressed up as a score.
+    """
     rgb = np.asarray(Image.open(path).convert("RGB"), dtype=np.float64)
+    if rgb.shape[0] < 4 or rgb.shape[1] < 4:
+        return 0.5
     r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
 
     # 1. High-frequency residual per channel (image - blur), then measure how
@@ -60,6 +66,8 @@ def color_statistics_score(path: str) -> float:
     #    synthetic tell.
     def abs_skew(c):
         d = (c[:, 1:] - c[:, :-1]).ravel()
+        if d.size == 0:
+            return 0.0
         d = d - d.mean()
         s2 = (d ** 2).mean() + 1e-9
         return abs(float((d ** 3).mean() / s2 ** 1.5))

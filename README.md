@@ -22,6 +22,7 @@ harness so you can calibrate the thresholds on your own data.
 | `metadata_analysis` | Missing camera EXIF or a generative-tool `Software` tag. Cheap tie-breaker. | Pillow |
 | `noise_residual` | Real sensors imprint white PRNU noise; generators are over-smooth or leave structured residuals. | scipy |
 | `color_statistics` | Demosaicing ties camera color channels together; generators reproduce the co-occurrence stats imperfectly. | scipy |
+| `cfa_periodicity` | A camera's Bayer colour-filter array leaves a 2x2 demosaicing lattice (a large Nyquist-frequency ridge in the high-pass residual); fully synthesised pixels have none. | numpy |
 | `cnn_detector` | Learned classifier — strongest single signal; bring your own weights. | torch *(optional)* |
 
 ### Text (`src/text_detection/`)
@@ -31,6 +32,11 @@ harness so you can calibrate the thresholds on your own data.
 | `stylometry` | Model-free style stats: lexical diversity, sentence-length variance, connective density. | none |
 | `detectgpt` | Machine text sits at a local maximum of model log-prob; perturbations lower it (DetectGPT curvature). | transformers *(optional)* |
 | `watermark` | **Proactive** green-list z-test (Kirchenbauer-style): detects the secret bias a watermarking model embeds, with a bounded false-positive rate. | none |
+| `unicode_forensics` | Code-point forensics: invisible zero-width marks, homoglyph swaps from "humanizer" evasion tools, and the uniform typography of generated prose. Independent of wording, so it survives paraphrase attacks. | none |
+| `structure` | Discourse shape: phrase recycling (distinct-3), repeated sentence openers, the three-item-list habit, answer scaffolding, assistant register phrases. Signals combine noisy-OR, so several weak tells compound. | none |
+
+Text tokenisation is Unicode-aware: CJK, Arabic, Devanagari and Cyrillic
+passages are analysed rather than silently skipped.
 
 ### Video (`src/video_detection/`)
 | Module | Idea | Deps |
@@ -44,6 +50,16 @@ harness so you can calibrate the thresholds on your own data.
 |---|---|---|
 | `spectral_artifacts` | Neural vocoders leave a flat HF roll-off + periodic hop energy (the audio analogue of image upsampling). | numpy |
 | `silence_stats` | Real recordings have a non-zero noise floor and irregular pauses; TTS gaps are often digitally clean and uniform. | numpy |
+
+### Cross-media (`src/provenance.py`, `src/confidence.py`)
+| Module | Idea | Deps |
+|---|---|---|
+| `provenance` | Reads C2PA / Content Credentials, XMP and PNG generator chunks. The only channel that can be decisive **in both directions**: `digitalSourceType=trainedAlgorithmicMedia` proves synthesis, `digitalCapture` is evidence of a real camera. Works bytewise on any file, so it covers video and audio too. | Pillow |
+| `confidence` | Calibrated fusion: weighted combination, detector-agreement as an uncertainty proxy, hard-evidence override, ranked explanations, and **abstention** (`INCONCLUSIVE`) when the evidence is thin or contradictory. | none |
+
+A score of exactly `0.5` means *"this detector found no evidence either way"*
+and is excluded from the fusion rather than averaged in as a vote — otherwise a
+silent detector would fake extra breadth of evidence.
 
 Audio uses only stdlib `wave` + numpy (PCM WAV in; convert other formats with ffmpeg first).
 
@@ -121,12 +137,41 @@ print("AUROC:", roc_auc(labels, scores))         # threshold-free separability
 print("best cut:", best_threshold(labels, scores))
 ```
 
+## Reading a result
+
+```python
+from src.detector import detect, detect_many
+
+r = detect("upload.bin")          # media type inferred from magic bytes
+r["combined"]            # 0.0-1.0, weighted fusion
+r["verdict"]             # LIKELY AI-GENERATED / POSSIBLY ... / LIKELY AUTHENTIC
+r["calibrated_verdict"]  # the same, or INCONCLUSIVE when we should not commit
+r["confidence"]          # 0.0-1.0 from agreement, breadth and decisiveness
+r["explanation"]         # signals ranked by how much they moved the verdict
+r["provenance"]          # {"generator": "ComfyUI", "declared": True, ...}
+r["errors"]              # per-detector failures; one bad detector never aborts
+
+detect_many([...])       # one row per input, failures recorded not raised
+```
+
+Bad input fails loudly and specifically: `FileNotFoundError` (with a hint to
+pass `media_type="text"`), `IsADirectoryError` (pointing at the batch API),
+`ValueError` for empty files, empty text and unknown media types, `TypeError`
+for non-string input.
+
 ## Tests
 
 ```bash
 pip install pytest
 pytest tests/          # runs with only numpy/scipy/Pillow installed
 ```
+
+`tests/test_edge_cases.py` covers the degenerate inputs a deployment meets on
+day one: empty and whitespace text, punctuation/emoji/digit-only passages, CJK,
+Arabic, Devanagari and Cyrillic, RTL overrides and control characters, missing
+files, directories, zero-byte and truncated files, extensionless uploads and
+lying extensions, 1x1 and 1xN images, greyscale/RGBA/palette/CMYK modes, and
+Unicode filenames.
 
 ## Limitations (read these)
 
@@ -135,6 +180,11 @@ pytest tests/          # runs with only numpy/scipy/Pillow installed
 - Every signal here is defeatable in isolation (JPEG recompression fools
   frequency analysis; "humanizer" tools raise text perplexity; metadata is
   trivially forged). **Ensemble, and treat output as evidence, not proof.**
+- Absence of provenance metadata proves **nothing** — it is stripped by every
+  social platform. Only its *presence* is treated as high-confidence evidence.
+- `cfa_periodicity` also fires on legitimately re-encoded, rescaled or
+  screenshotted photos, which destroy the demosaicing lattice. It is
+  corroboration, never a verdict on its own.
 - `cnn_detector` ships **no weights** — it demonstrates the interface; supply a
   trained model for real accuracy.
 
@@ -142,15 +192,20 @@ pytest tests/          # runs with only numpy/scipy/Pillow installed
 
 ```
 src/
-  detector.py        unified detect() dispatcher (auto-routes by media type)
+  detector.py        unified detect()/detect_many() dispatcher (extension +
+                     magic-byte routing, per-detector fault isolation)
+  confidence.py      calibrated fusion, uncertainty, abstention, explanations
+  provenance.py      C2PA / Content Credentials / generator-metadata scanning
   ensemble.py        LogisticEnsemble — trained weighted fusion of detectors
   batch.py           directory batch scorer + CLI (JSON/CSV, optional AUROC)
-  image_detection/   frequency, ELA, metadata, noise-residual, color-stats, CNN
-  text_detection/    perplexity, stylometry, detectgpt, watermark
+  image_detection/   frequency, ELA, metadata, noise-residual, color-stats,
+                     CFA/demosaicing periodicity, CNN
+  text_detection/    perplexity, stylometry, detectgpt, watermark,
+                     unicode forensics, discourse structure
   video_detection/   temporal, face-warping, frame-frequency
   audio_detection/   vocoder spectral artifacts, silence/noise-floor stats
   evaluation/        AUROC, best-threshold, confusion/precision/recall
   utils/             shared preprocessing
-examples/demo.py     ensemble CLI (--image/--text/--video/--audio/--auto)
+examples/demo.py     ensemble CLI (--image/--text/--video/--audio/--auto/--stdin)
 tests/               dependency-free property tests
 ```
