@@ -9,6 +9,9 @@ Four complementary approaches, weakest-assumption to strongest-model:
                            synthetic composites).
     metadata_analysis   -- missing camera EXIF / tell-tale software tags.
     cnn_detector        -- learned classifier; strongest but needs weights.
+    cfa_periodicity     -- a camera's Bayer colour-filter array leaves a 2x2
+                           demosaicing lattice in the high-frequency residual;
+                           fully synthesised pixels have no such fingerprint.
 
 Ensemble them — see `combine_scores`.
 """
@@ -17,6 +20,7 @@ from .error_level_analysis import ela_score          # noqa: F401
 from .metadata_analysis import metadata_score        # noqa: F401
 from .noise_residual import noise_residual_score     # noqa: F401
 from .color_statistics import color_statistics_score  # noqa: F401
+from .cfa_periodicity import cfa_score, cfa_report    # noqa: F401
 
 
 def combine_scores(scores: dict[str, float], weights: dict[str, float] | None = None) -> float:

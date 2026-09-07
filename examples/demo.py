@@ -4,6 +4,8 @@ Run:
     python examples/demo.py --image path/to/pic.jpg
     python examples/demo.py --text  "some passage to test..."
     python examples/demo.py --video path/to/clip.mp4
+    python examples/demo.py --auto  path/to/anything      # full calibrated report
+    cat essay.txt | python examples/demo.py --stdin       # score piped text
 
 The whole point of this file is to show the *ensemble* pattern: no single
 detector is trusted; each contributes a weak score in [0, 1] and we average them
@@ -52,10 +54,28 @@ def run_audio(path: str) -> None:
     _report("AUDIO", scores, combined)
 
 
-def run_auto(path: str) -> None:
-    """Let the unified dispatcher infer the media type and run every detector."""
-    result = detect(path)
+def run_auto(x: str, media_type: str | None = None) -> None:
+    """Full pipeline: infer the media type, run every detector, show the
+    calibrated verdict, the provenance evidence and which signals drove it."""
+    result = detect(x, media_type=media_type)
     _report(result["media_type"].upper() + " (auto)", result["scores"], result["combined"])
+
+    print(f"  {'confidence':<16} {result['confidence']:.2f}"
+          f"   (detector agreement {result['agreement']:.2f})")
+    print(f"  {'calibrated':<16} {result['calibrated_verdict']}")
+
+    prov = result.get("provenance")
+    if prov and prov["evidence"]:
+        print("  provenance:")
+        for line in prov["evidence"]:
+            print(f"      - {line}")
+
+    print("  why:")
+    for line in result["explanation"]:
+        print(f"      - {line}")
+    for err in result["errors"]:
+        print(f"      ! {err}")
+    print()
 
 
 def run_text(text: str) -> None:
@@ -94,6 +114,8 @@ def main() -> None:
     g.add_argument("--video", help="path to a video file")
     g.add_argument("--audio", help="path to an audio file (WAV)")
     g.add_argument("--auto", help="path; infer media type automatically")
+    g.add_argument("--stdin", action="store_true",
+                   help="read a text passage from standard input")
     args = ap.parse_args()
 
     if args.image:
@@ -106,6 +128,11 @@ def main() -> None:
         run_audio(args.audio)
     elif args.auto:
         run_auto(args.auto)
+    elif args.stdin:
+        piped = sys.stdin.read()
+        if not piped.strip():
+            ap.error("no text on standard input")
+        run_auto(piped, media_type="text")
 
 
 if __name__ == "__main__":

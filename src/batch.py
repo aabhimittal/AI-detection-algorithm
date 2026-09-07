@@ -48,6 +48,9 @@ def score_paths(paths: Iterable[str]) -> list[dict]:
             r = detect(p)
             rows.append({"path": p, "media_type": r["media_type"],
                          "combined": r["combined"], "verdict": r["verdict"],
+                         "calibrated_verdict": r.get("calibrated_verdict"),
+                         "confidence": r.get("confidence"),
+                         "generator": (r.get("provenance") or {}).get("generator"),
                          "scores": r["scores"]})
         except Exception as e:  # keep going; record the failure
             rows.append({"path": p, "error": str(e)})
@@ -63,12 +66,15 @@ def write_csv(rows: list[dict], path: str) -> None:
     """Flatten per-detector scores into columns for spreadsheet triage."""
     # Union of all detector names seen, for a stable header.
     detectors = sorted({k for r in rows for k in (r.get("scores") or {})})
-    fields = ["path", "media_type", "combined", "verdict", *detectors, "error"]
+    fields = ["path", "media_type", "combined", "verdict", "calibrated_verdict",
+              "confidence", "generator", *detectors, "error"]
     with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
         for r in rows:
-            flat = {k: r.get(k) for k in ("path", "media_type", "combined", "verdict", "error")}
+            flat = {k: r.get(k) for k in ("path", "media_type", "combined", "verdict",
+                                          "calibrated_verdict", "confidence",
+                                          "generator", "error")}
             for d in detectors:
                 flat[d] = (r.get("scores") or {}).get(d)
             w.writerow(flat)
